@@ -1,0 +1,542 @@
+<form version="1.1">
+    <label>CockroachDB Benchmark Dashboard</label>
+    <description>Real-time monitoring of CockroachDB insert performance benchmarks</description>
+
+    <fieldset submitButton="false" autoRun="true">
+        <input type="time" token="time_token">
+            <label>Time Range</label>
+            <default>
+                <earliest>-60m@m</earliest>
+                <latest>now</latest>
+            </default>
+        </input>
+        <input type="dropdown" token="benchmark_filter" searchWhenChanged="true">
+            <label>Benchmark Configuration</label>
+            <choice value="*">All Configurations</choice>
+            <search>
+                <query>
+                    index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                    | stats count by benchmark
+                    | sort benchmark
+                    | fields benchmark
+                </query>
+                <earliest>$time_token.earliest$</earliest>
+                <latest>$time_token.latest$</latest>
+            </search>
+            <fieldForLabel>benchmark</fieldForLabel>
+            <fieldForValue>benchmark</fieldForValue>
+            <default>*</default>
+        </input>
+        <input type="dropdown" token="workers_filter" searchWhenChanged="true">
+            <label>Workers</label>
+            <choice value="*">All</choice>
+            <search>
+                <query>
+                    index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                    | stats count by workers
+                    | sort workers
+                    | fields workers
+                </query>
+                <earliest>$time_token.earliest$</earliest>
+                <latest>$time_token.latest$</latest>
+            </search>
+            <fieldForLabel>workers</fieldForLabel>
+            <fieldForValue>workers</fieldForValue>
+            <default>*</default>
+        </input>
+        <input type="dropdown" token="batch_filter" searchWhenChanged="true">
+            <label>Batch Size</label>
+            <choice value="*">All</choice>
+            <search>
+                <query>
+                    index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                    | stats count by batch_size
+                    | sort batch_size
+                    | fields batch_size
+                </query>
+                <earliest>$time_token.earliest$</earliest>
+                <latest>$time_token.latest$</latest>
+            </search>
+            <fieldForLabel>batch_size</fieldForLabel>
+            <fieldForValue>batch_size</fieldForValue>
+            <default>*</default>
+        </input>
+    </fieldset>
+
+    <!-- Row 1: Overview Metrics -->
+    <row>
+        <panel>
+            <title>Total Successful Writes</title>
+            <single>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | stats sum(total_successful_writes) as total_writes
+                        | eval total_writes_formatted=tostring(total_writes, "commas")
+                        | fields total_writes_formatted
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+                <option name="underLabel">Total Rows Inserted</option>
+            </single>
+        </panel>
+        <panel>
+            <title>Average Writes/Sec</title>
+            <single>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | stats avg(successful_writes_per_sec) as avg_writes_per_sec
+                        | eval avg_writes_per_sec=round(avg_writes_per_sec, 2)
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="rangeColors">["0xdc4e41","0xf1813f","0xf8be34","0x0877a6","0x53a051"]</option>
+                <option name="underLabel">Avg Throughput</option>
+            </single>
+        </panel>
+        <panel>
+            <title>Success Rate</title>
+            <single>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | stats avg(success_rate_percent) as avg_success_rate
+                        | eval avg_success_rate=round(avg_success_rate, 2)."%"
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="rangeColors">["0xdc4e41","0xf1813f","0xf8be34","0x0877a6","0x53a051"]</option>
+                <option name="rangeValues">[0,80,90,95,99]</option>
+                <option name="underLabel">Overall Success Rate</option>
+            </single>
+        </panel>
+        <panel>
+            <title>Total Failed Writes</title>
+            <single>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | stats sum(total_failed_writes) as total_failures
+                        | eval total_failures_formatted=tostring(total_failures, "commas")
+                        | fields total_failures_formatted
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+                <option name="rangeValues">[0,10,100,1000,10000]</option>
+                <option name="underLabel">Total Errors</option>
+            </single>
+        </panel>
+    </row>
+
+    <!-- Row 2: Throughput Trends -->
+    <row>
+        <panel>
+            <title>Writes Per Second Over Time</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart avg(successful_writes_per_sec) as "Writes/Sec" by benchmark
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Writes/Second</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Execute Latency (ms) Over Time</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart avg(avg_execute_ms) as "Execute (ms)" by benchmark
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Execute (ms)</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+    </row>
+
+    <!-- Row 3.1: Additional timing charts -->
+    <row>
+        <panel>
+            <title>Marshal Latency (ms) Over Time</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart avg(avg_marshal_ms) as "Marshal (ms)" by benchmark
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Marshal (ms)</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Network RTT (ms, TCP connect) Over Time</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart avg(avg_ping_ms) as "Network (ms)" by benchmark
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Network (ms)</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+    </row>
+
+    <!-- Row 3: Attempts vs Success -->
+    <row>
+        <panel>
+            <title>Attempts vs Successful Writes</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart avg(attempts_per_sec) as "Total Attempts/Sec"
+                        avg(successful_writes_per_sec) as "Successful Writes/Sec"
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">area</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Operations/Second</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Success Rate Over Time</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart avg(success_rate_percent) as "Success Rate %"
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Success Rate (%)</option>
+                <option name="charting.axisY.minimumNumber">0</option>
+                <option name="charting.axisY.maximumNumber">100</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+    </row>
+
+    <!-- Row 4: Worker Comparison -->
+    <row>
+        <panel>
+            <title>Throughput by Worker Count</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        | eval worker_count=workers
+                        | stats avg(successful_writes_per_sec) as "Avg Writes/Sec" by worker_count
+                        | sort worker_count
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">column</option>
+                <option name="charting.axisTitleX.text">Number of Workers</option>
+                <option name="charting.axisTitleY.text">Avg Writes/Second</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Throughput by Batch Size</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        | stats avg(successful_writes_per_sec) as "Avg Writes/Sec" by batch_size
+                        | sort batch_size
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">column</option>
+                <option name="charting.axisTitleX.text">Batch Size</option>
+                <option name="charting.axisTitleY.text">Avg Writes/Second</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+    </row>
+
+    <!-- Row 5: Failure Analysis -->
+    <row>
+        <panel>
+            <title>Failed Writes Over Time</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart sum(failed_writes) as "Failed Writes"
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">column</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Failed Writes</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Failure Rate Percentage</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart avg(failure_rate_percent) as "Failure Rate %"
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">area</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Failure Rate (%)</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.chart.stackMode">default</option>
+            </chart>
+        </panel>
+    </row>
+
+    <!-- Row 6: Test Details Table -->
+    <row>
+        <panel>
+            <title>Recent Test Details</title>
+            <table>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | eval writes_per_sec=round(successful_writes_per_sec, 2)
+                        | eval success_rate=round(success_rate_percent, 2)."%"
+                        | table _time, benchmark, workers, batch_size, writes_per_sec, success_rate,
+                        total_rows, total_successful_writes, total_failed_writes
+                        | rename _time as "Time", benchmark as "Benchmark Name", workers as
+                        "Workers", batch_size as "Batch Size", writes_per_sec as "Writes/Sec",
+                        success_rate as "Success Rate", total_rows as "Total Rows",
+                        total_successful_writes as "Successful", total_failed_writes as "Failed"
+                        | sort - Time
+                        | head 50
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="count">10</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="rowNumbers">true</option>
+                <option name="wrap">false</option>
+            </table>
+        </panel>
+    </row>
+
+    <!-- Row 7: Error Breakdown -->
+    <row>
+        <panel>
+            <title>Error Types Distribution</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_tick"
+                        benchmark="$benchmark_filter$" workers="$workers_filter$"
+                        batch_size="$batch_filter$"
+                        | timechart sum(timeout_errors) as "Timeout Errors" sum(connection_errors)
+                        as "Connection Errors" sum(other_errors) as "Other Errors"
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">column</option>
+                <option name="charting.chart.stackMode">stacked</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Error Count</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Recent Errors and Warnings</title>
+            <table>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark
+                        (error=* OR message="*error*" OR message="*failed*")
+                        event!="single_insert_tick" event!="single_insert_done"
+                        | table _time, event, error, worker_id, timeout_ms
+                        | rename _time as "Time", event as "Event", error as "Error Details",
+                        worker_id as "Worker ID", timeout_ms as "Timeout (ms)"
+                        | sort - Time
+                        | head 20
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="count">10</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="rowNumbers">true</option>
+                <option name="wrap">true</option>
+            </table>
+        </panel>
+    </row>
+
+    <!-- Row 8: Completed Tests Summary -->
+    <row>
+        <panel>
+            <title>Completed Tests Summary</title>
+            <table>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_done"
+                        benchmark="$benchmark_filter$"
+                        | eval writes_per_sec=round(overall_successful_writes_per_sec, 2)
+                        | eval success_rate=round(success_rate_percent, 2)."%"
+                        | eval duration=round(total_duration_secs, 2)." sec"
+                        | eval overall_avg_marshal_ms=round(avg_marshal_ms_overall, 2)
+                        | eval overall_avg_execute_ms=round(avg_execute_ms_overall, 2)
+                        | eval overall_avg_ping_ms=round(avg_ping_ms_overall, 2)
+                        | table _time, benchmark, workers, batch_size, total_rows,
+                        total_successful_writes, total_failed_writes, writes_per_sec, success_rate,
+                        timeout_errors, connection_errors, other_errors,
+                        overall_avg_marshal_ms, overall_avg_execute_ms, overall_avg_ping_ms,
+                        duration
+                        | rename _time as "Completed At", benchmark as "Benchmark", workers as
+                        "Workers", batch_size as "Batch Size", total_rows as "Total Rows",
+                        total_successful_writes as "Successful", total_failed_writes as "Failed",
+                        writes_per_sec as "Overall Writes/Sec", success_rate as "Success Rate",
+                        timeout_errors as "Timeouts", connection_errors as "Conn Errors",
+                        other_errors as "Other Errors",
+                        overall_avg_marshal_ms as "Avg Marshal (ms)", overall_avg_execute_ms as "Avg
+                        Execute (ms)", overall_avg_ping_ms as "Avg Network (ms)", duration as
+                        "Duration"
+                        | sort - "Completed At"
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="count">10</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="rowNumbers">true</option>
+            </table>
+        </panel>
+    </row>
+
+    <!-- Row 9: Overall Throughput Comparison -->
+    <row>
+        <panel>
+            <title>Overall Throughput by Configuration</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_done"
+                        | eval config=workers." workers, batch ".batch_size
+                        | stats avg(overall_successful_writes_per_sec) as "Avg Writes/Sec" by config
+                        | sort - "Avg Writes/Sec"
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">bar</option>
+                <option name="charting.axisTitleX.text">Average Writes/Second</option>
+                <option name="charting.axisTitleY.text">Configuration</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Average Latency by Configuration</title>
+            <chart>
+                <search>
+                    <query>
+                        index=main sourcetype=cockroach_benchmark event="single_insert_done"
+                        | eval config=workers." workers, batch ".batch_size
+                        | stats avg(avg_execute_ms_overall) as "Avg Execute (ms)" by config
+                        | sort config
+                    </query>
+                    <earliest>$time_token.earliest$</earliest>
+                    <latest>$time_token.latest$</latest>
+                </search>
+                <option name="charting.chart">bar</option>
+                <option name="charting.axisTitleX.text">Average Execute Latency (ms)</option>
+                <option name="charting.axisTitleY.text">Configuration</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.drilldown">none</option>
+            </chart>
+        </panel>
+    </row>
+
+</form>
